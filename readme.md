@@ -1,4 +1,4 @@
-# 🚀 IODD Sync Tool
+# 🚀 IODD Sync Tool (client side)
 
 ## 📌 Overview
 The **IODD Sync Tool** is a powerful PowerShell and Bash script combo that automates the synchronization of data between a **WSL2 environment** and an **IODD (Industrial Optical Disk Drive) device**. It ensures dependencies are installed, detects the IODD drive, and provides an easy-to-use sync process.
