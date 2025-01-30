@@ -22,8 +22,8 @@ Before running the script, ensure you have:
 
 ### 1️⃣ Clone the repository
 ```sh
-git clone https://github.com/your-repo/iodd-sync-tool.git
-cd iodd-sync-tool
+git clone https://github.com/Sec-ctrl/IODDSync.git
+cd IODDSync
 ```
 
 ### 2️⃣ Run the PowerShell script
