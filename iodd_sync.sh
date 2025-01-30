@@ -11,7 +11,17 @@ mkdir -p "$(dirname "$LOG_FILE")"
 
 # Logging function
 log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+}
+
+# Ensure required tools are installed
+check_requirements() {
+    for cmd in rsync ping findmnt; do
+        if ! command -v "$cmd" &> /dev/null; then
+            log "❌ Error: $cmd is not installed. Please install it and retry."
+            exit 1
+        fi
+    done
 }
 
 # Detect IODD Mount Automatically
@@ -20,39 +30,49 @@ detect_iodd() {
     if [ -z "$IODD_MOUNT" ]; then
         log "❌ Error: IODD device not detected. Please check your connection and try again."
         exit 1
+    else
+        log "✅ IODD detected at: $IODD_MOUNT"
     fi
 }
 
 # Ensure the main server is reachable
 check_server_connection() {
-    if ! ping -c 1 -W 2 "$(echo $SOURCE_SERVER | cut -d@ -f2 | cut -d: -f1)" &>/dev/null; then
-        log "⚠ Warning: Unable to reach the main server. Please check your network."
-        exit 1
+    SERVER_IP=$(echo "$SOURCE_SERVER" | cut -d@ -f2 | cut -d: -f1)
+    if ! ping -c 1 -W 2 "$SERVER_IP" &>/dev/null; then
+        log "⚠ Warning: Unable to reach the main server. Retrying..."
+        sleep 2
+        if ! ping -c 1 -W 5 "$SERVER_IP" &>/dev/null; then
+            log "❌ Error: Server is unreachable. Check your network."
+            exit 1
+        fi
     fi
+    log "✅ Connected to server: $SERVER_IP"
 }
 
 # Display Sync Options
 display_menu() {
     clear
-    log "🔄 IODD Sync Tool - ServiceIT"
-    echo -e "\nSelect a sync option:"
-    echo "1) 🛠 Test Sync (Dry Run - No changes, only check errors)"
-    echo "2) 🚀 Quick Full Update (Sync & Auto-Verify)"
-    echo "3) 🛠 Selective Sync (Choose specific items)"
+    echo "--------------------------------------------------------"
+    echo " 🔄 IODD Sync Tool - ServiceIT                          "
+    echo "--------------------------------------------------------"
+    echo "1) 🛠 Test Sync (Dry Run - No changes, check errors)   "
+    echo "2) 🚀 Quick Full Update (Sync & Auto-Verify)           "
+    echo "3) 📂 Selective Sync (Choose specific items)          "
     echo "4) 🔍 Keep Specific Files/Folders & Sync Everything Else"
-    echo "5) 🚪 Exit"
+    echo "5) ❌ Exit                                             "
+    echo "--------------------------------------------------------"
     read -p "Enter your choice [1-5]: " choice
 }
 
 # Function to let the user exclude files/folders from sync
 select_exclusions() {
-    log "🔍 Select files or folders to exclude from sync."
+    log "🔍 Generating file list for exclusions..."
     rsync -avz --dry-run --list-only "$SOURCE_SERVER/" | awk '{print $NF}' > /tmp/sync_list.txt
-    cat /tmp/sync_list.txt
+    cat /tmp/sync_list.txt | nl
 
     read -p "Enter file(s) or folder(s) to exclude (comma-separated): " exclude_input
     echo "$exclude_input" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' > "$EXCLUDE_FILE"
-    log "✅ Selected exclusions: $(cat $EXCLUDE_FILE)"
+    log "✅ Exclusions saved: $(cat $EXCLUDE_FILE)"
 }
 
 # Test Sync Mode - Dry run, check for errors before actual sync
@@ -85,7 +105,7 @@ sync_full() {
 sync_selective() {
     log "🛠 Performing Selective Sync..."
     rsync -avz --dry-run --progress --delete --ignore-existing "$SOURCE_SERVER/" "$IODD_MOUNT/" | awk '{print $NF}' > /tmp/sync_list.txt
-    cat /tmp/sync_list.txt
+    cat /tmp/sync_list.txt | nl
 
     read -p "Enter directory or file to sync (exact match required): " selection
     if [ -n "$selection" ]; then
@@ -95,8 +115,6 @@ sync_selective() {
         log "⚠ No selection made. Exiting selective sync."
     fi
 }
-
-
 
 # Keep Specific Files/Folders & Sync Everything Else
 sync_keep_files() {
@@ -129,6 +147,7 @@ auto_update() {
 }
 
 # Ensure prerequisites are met
+check_requirements
 detect_iodd
 check_server_connection
 display_menu

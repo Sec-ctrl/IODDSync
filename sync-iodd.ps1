@@ -1,56 +1,86 @@
-# sync-iodd.ps1
+# Function to check if WSL2 is installed and running        !!!WARNING SCRIPT WILL USE DEFAULT WSL DISTRO!!!
 
-# Run with: powershell -ExecutionPolicy  Bypass -File .\sync-iodd.ps1"
+function Test-WSL {
+    $defaultLine = wsl -l -v | Where-Object { $_ -match "\*" } | ForEach-Object { "MATCH: $_" }
+    
+    if (-not $defaultLine) {
+        Write-Host "No default WSL distribution found." -ForegroundColor Yellow
+        return exit 1
+    }
+    
+    # Extract version number from the default line
+    $version = wsl -l -v | Where-Object { $_ -match "\*" } | ForEach-Object { ($_ -split '\s+')[-1] }
+    
+    if ($version -eq "2") {
+        Write-Host "The default WSL distribution is using WSL 2." -ForegroundColor Green
+        return
+    } else {
+        Write-Host "The default WSL distribution is NOT using WSL 2." -ForegroundColor Red
+        exit 1
+    }
+}
 
-# Function to check if Docker is installed and running
-function Test-Docker {
-    Write-Host "Checking Docker status..." -ForegroundColor Cyan
 
-    # Check if Docker is installed
-    if (-Not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        Write-Host "❌ Error: Docker is not installed. Please install Docker Desktop and try again." -ForegroundColor Red
+
+
+# Function to install missing dependencies in WSL
+function Install-WSLDependencies {
+    Write-Host "Checking WSL dependencies..." -ForegroundColor Cyan
+
+    # Get the default WSL distribution
+    $defaultDistro =  [string](wsl -l -v | Where-Object { $_ -match "\*" } | ForEach-Object { ($_ -split '\s+')[1] }) -replace "`0", ""
+    if (-not $defaultDistro) {
+        Write-Host "Error: No default WSL distribution found. Please install a Linux distro in WSL." -ForegroundColor Red
         exit 1
     }
 
-    # Check if Docker is responding
-    try {
-        $dockerVersion = docker version --format '{{.Server.Version}}' 2>$null
-        if ($null -eq $dockerVersion -or $dockerVersion -eq "") {
-            Write-Host "❌ Error: Docker is installed but not responding. Please start Docker Desktop." -ForegroundColor Red
-            exit 1
+    # Detect package manager
+    $pkgManager = wsl -d $defaultDistro bash -c "if command -v apt > /dev/null; then echo apt;
+    elif command -v apk > /dev/null; then echo apk;
+    elif command -v dnf > /dev/null; then echo dnf;
+    elif command -v yum > /dev/null; then echo yum;
+    elif command -v pacman > /dev/null; then echo pacman;
+    else echo unknown; fi" 2>$null
+
+    if ($pkgManager -eq "unknown") {
+        Write-Host "Error: Unsupported WSL distribution. Please install dependencies manually." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "Detected package manager: $pkgManager" -ForegroundColor Yellow
+
+    # Install required dependencies only if missing
+    switch ($pkgManager) {
+        "apt" {
+            wsl -d $defaultDistro bash -c "sudo apt update && sudo apt install -y rsync openssh-client iputils-ping util-linux"
         }
-    } catch {
-        Write-Host "❌ Error: Docker is installed but unresponsive. Please check Docker." -ForegroundColor Red
-        exit 1
+        "apk" {
+            wsl -d $defaultDistro bash -c "sudo apk add rsync openssh-client iputils"
+        }
+        "dnf" {
+            wsl -d $defaultDistro bash -c "sudo dnf install -y rsync openssh-clients iputils util-linux"
+        }
+        "yum" {
+            wsl -d $defaultDistro bash -c "sudo yum install -y rsync openssh-clients iputils util-linux"
+        }
+        "pacman" {
+            wsl -d $defaultDistro bash -c "sudo pacman -Sy --noconfirm rsync openssh iputils util-linux"
+        }
     }
 
-    # Check if Docker daemon is running by listing containers
-    try {
-        docker ps | Out-Null
-    } catch {
-        Write-Host "❌ Error: Docker daemon is not running. Please start Docker Desktop and try again." -ForegroundColor Red
-        exit 1
-    }
-
-    Write-Host "✅ Docker is installed and running." -ForegroundColor Green
+    Write-Host "WSL dependencies check complete." -ForegroundColor Green
 }
 
 # Function to detect the IODD drive
 function Get-IODDDrive {
-    Write-Host "Scanning for connected drives..."
+    Write-Host "Scanning for connected drives..." -ForegroundColor Cyan
 
-    # Get a list of mounted drives
-    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $null -ne$_.Root }
-
-    # Array to store potential IODD drives
+    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $null -ne $_.Root  }
     $ioddDrives = @()
 
     foreach ($drive in $drives) {
-        # Check for a recognizable IODD structure (marker file/folder)
         $ioddPath = "$($drive.Root)IODD_README.txt"
-        $toolsPath = "$($drive.Root)serviceit_tools"                            # Change this to the correct folder
-        
-        if ((Test-Path -Path $ioddPath) -or (Test-Path -Path $toolsPath)) {
+        if (Test-Path -Path $ioddPath) {
             $ioddDrives += $drive.Root
         }
     }
@@ -64,10 +94,9 @@ function Get-IODDDrive {
         return $ioddDrives[0]
     }
     else {
-        # Prompt user to select a drive if multiple IODDs are found
         Write-Host "Multiple drives detected. Please select the correct IODD device:"
         for ($i = 0; $i -lt $ioddDrives.Count; $i++) {
-            Write-Host "$($i + 1)) $($ioddDrives[$i])"
+            Write-Host ("{0}) {1}" -f ($i + 1, $ioddDrives[$i]))
         }
         $selection = Read-Host "Enter the number of the correct drive (1-$($ioddDrives.Count))"
         if ($selection -match "^[0-9]+$" -and [int]$selection -ge 1 -and [int]$selection -le $ioddDrives.Count) {
@@ -82,22 +111,26 @@ function Get-IODDDrive {
 
 # Main execution
 Write-Host "Starting IODD sync process..." -ForegroundColor Cyan
-
-# Step 1: Ensure Docker is installed and running
-Test-Docker
-
-# Step 2: Detect the IODD drive
+Test-WSL
+Install-WSLDependencies
 $ioddDrive = Get-IODDDrive
 
-# Step 3: Validate that the drive exists
 if (-Not (Test-Path $ioddDrive)) {
     Write-Host "Error: The detected IODD drive ($ioddDrive) is inaccessible. Please verify the drive and try again." -ForegroundColor Red
     exit 1
 }
 
-# Step 4: Start Docker container with the detected drive
-Write-Host "Starting Docker container for sync..." -ForegroundColor Cyan
-docker run -it --rm --name iodd-updater --privileged -v "$ioddDrive`:/mnt/iodd" iodd-updater
+# Convert Windows path to WSL path properly
+$ioddDriveWSL = wsl wslpath -a "`"$ioddDrive`""
 
-# Step 5: Confirm completion
-Write-Host "IODD sync process complete!" -ForegroundColor Green
+Write-Host "Mounting IODD drive in WSL2: $ioddDriveWSL" -ForegroundColor Cyan
+
+# Verify if script exists before execution
+if (-Not (wsl bash -c "test -f ~/iodd_sync.sh && echo exists")) {
+    Write-Host "Error: iodd_sync.sh not found in home directory. Please place the script in WSL before proceeding." -ForegroundColor Red
+    exit 1
+}
+
+wsl bash -c "chmod +x ~/iodd_sync.sh && ~/iodd_sync.sh $ioddDriveWSL"
+
+Write-Host "IODD sync process complete" -ForegroundColor Green
