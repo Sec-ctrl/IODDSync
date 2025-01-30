@@ -97,11 +97,7 @@ if (-Not (Test-Path $ioddDrive)) {
 
 # Step 4: Start Docker container with the detected drive
 Write-Host "Starting Docker container for sync..." -ForegroundColor Cyan
-docker run -it --rm `
-    --name iodd-updater `
-    --privileged `
-    -v "$ioddDrive`:/mnt/iodd" `  # Fixed path formatting
-    iodd-updater
+docker run -it --rm --name iodd-updater --privileged -v "$ioddDrive`:/mnt/iodd" iodd-updater
 
 # Step 5: Confirm completion
 Write-Host "IODD sync process complete!" -ForegroundColor Green

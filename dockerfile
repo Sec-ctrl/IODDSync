@@ -1,5 +1,5 @@
 # Base image - Smaller & optimized
-FROM ubuntu:minimal
+FROM ubuntu:latest
 
 # Set timezone to avoid warnings & ensure non-interactive install
 ENV DEBIAN_FRONTEND=noninteractive
@@ -39,10 +39,6 @@ USER iodduser
 
 # Set up persistent volume for logs
 VOLUME /mnt/logs
-
-# Add health check to monitor process
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD ["/bin/bash", "-c", "pgrep -f sync_iodd.sh || exit 1"]
 
 # Use ENTRYPOINT for more predictable execution
 ENTRYPOINT ["/bin/bash", "/usr/local/bin/sync_iodd.sh"]
