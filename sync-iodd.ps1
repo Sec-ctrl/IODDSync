@@ -79,7 +79,7 @@ function Get-IODDDrive {
     $ioddDrives = @()
 
     foreach ($drive in $drives) {
-        $ioddPath = "$($drive.Root)IODD_README.txt"
+        $ioddPath = "$($drive.Root)Service IT Tools"
         if (Test-Path -Path $ioddPath) {
             $ioddDrives += $drive.Root
         }
