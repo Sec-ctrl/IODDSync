@@ -75,7 +75,7 @@ function Install-WSLDependencies {
 function Get-IODDDrive {
     Write-Host "Scanning for connected drives..." -ForegroundColor Cyan
 
-    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $null -ne $_.Root  }
+    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $null -ne $_.Root }
     $ioddDrives = @()
 
     foreach ($drive in $drives) {
@@ -87,25 +87,30 @@ function Get-IODDDrive {
 
     if ($ioddDrives.Count -eq 0) {
         Write-Host "No IODD device detected. Please connect an IODD and try again." -ForegroundColor Red
-        exit 1
+        return $null
     }
     elseif ($ioddDrives.Count -eq 1) {
         Write-Host "IODD detected on drive: $($ioddDrives[0])" -ForegroundColor Green
         return $ioddDrives[0]
     }
     else {
-        Write-Host "Multiple drives detected. Please select the correct IODD device:"
+        Write-Host "Multiple IODD devices detected. Please select the correct IODD device:"
+        
         for ($i = 0; $i -lt $ioddDrives.Count; $i++) {
-            Write-Host ("{0}) {1}" -f ($i + 1, $ioddDrives[$i]))
+            Write-Host "$($i + 1)) $($ioddDrives[$i])"
         }
-        $selection = Read-Host "Enter the number of the correct drive (1-$($ioddDrives.Count))"
-        if ($selection -match "^[0-9]+$" -and [int]$selection -ge 1 -and [int]$selection -le $ioddDrives.Count) {
-            return $ioddDrives[[int]$selection - 1]
-        }
-        else {
-            Write-Host "Invalid selection. Exiting." -ForegroundColor Red
-            exit 1
-        }
+
+        do {
+            $selection = Read-Host "Enter the number of the correct drive (1-$($ioddDrives.Count))"
+
+            if ($selection -match "^\d+$") {
+                $selection = [int]$selection
+                if ($selection -ge 1 -and $selection -le $ioddDrives.Count) {
+                    return $ioddDrives[$selection - 1]  # Corrected index
+                }
+            }
+            Write-Host "Invalid selection. Please enter a number between 1 and $($ioddDrives.Count)." -ForegroundColor Red
+        } while ($true)
     }
 }
 
